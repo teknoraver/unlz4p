@@ -74,8 +74,6 @@
 #define S32		int32_t
 #endif
 
-#define u8 uint8_t
-
 //**************************************
 // Constants
 //**************************************
@@ -643,7 +641,7 @@ typedef struct
 #define EXTENSION ".lz4"
 #define WELCOME_MESSAGE "*** %s %s, by %s (%s) ***\n", COMPRESSOR_NAME, COMPRESSOR_VERSION, AUTHOR, COMPILED
 
-#define LZ4P_MAGIC	MAGIC('L','Z','4','P')
+#define LZ4P_MAGIC	"LZ4P"
 
 //#define CHUNKSIZE (8<<20)    // 8 MB
 #define CHUNKSIZE (256<<10)    // 256 KB
@@ -700,7 +698,7 @@ int lz4_do_decomp(unsigned char * pDecomp, unsigned char * pComp, unsigned long 
 
 	// Check Archive Header
 	header = (lz4p_header_t *)src;
-	if(header->magic != LZ4P_MAGIC){ DISPLAY("Unrecognized header : file cannot be decoded\n"); return 6; }
+	if(memcmp(&header->magic, LZ4P_MAGIC, 4)){ DISPLAY("Unrecognized header : file cannot be decoded\n"); return 6; }
 
 	src += sizeof(lz4p_header_t);
 	
@@ -759,7 +757,7 @@ unsigned int unlz4_get_decompsize(unsigned char * buf)
 
 int unlz4_get_hdroffset(unsigned char *input, int in_len)
 {
-#if 0
+#if 1
 	int offset = 0;
 	
 	while (offset < in_len)
@@ -777,12 +775,12 @@ int unlz4_get_hdroffset(unsigned char *input, int in_len)
 #endif
 }
 
-int unlz4_read(u8 *input, int in_len,
+int unlz4_read(uint8_t *input, int in_len,
 				int (*fill) (void *fill_data),
 				void *fill_data,
-				u8 *output, int *posp)
+				uint8_t *output, int *posp)
 {
-	u8 *in_buf, *out_buf;
+	uint8_t *in_buf, *out_buf;
 	int sink_int, next_size;
 	int ret = -1;
 	
@@ -804,11 +802,11 @@ int unlz4_read(u8 *input, int in_len,
 	unlz4_check_input_size(sizeof(lz4p_header_t));
 	
 	header = (lz4p_header_t*)in_buf;
-	if(header->magic != LZ4P_MAGIC) {
+	if(memcmp(&header->magic, LZ4P_MAGIC, 4)) {
 		DISPLAY("Unrecognized header : file cannot be decoded\n");
 		return 6;
 	}
-//	hexdump((u8*)header, sizeof(lz4p_header_t));
+//	hexdump((uint8_t*)header, sizeof(lz4p_header_t));
 	in_buf += sizeof(lz4p_header_t);
 	in_len -= sizeof(lz4p_header_t);
 	
@@ -830,7 +828,7 @@ int unlz4_read(u8 *input, int in_len,
 		next_size = list_block_size[n];
 		dprintf("[%d] next size = %x\n", n, next_size);
 		unlz4_check_input_size(next_size);
-//		hexdump((u8*)in_buf, 0x20);
+//		hexdump((uint8_t*)in_buf, 0x20);
 
 		if(n < (block_count-1))
 		{
@@ -867,3 +865,18 @@ int unlz4_read(u8 *input, int in_len,
 	return 0;
 }
 
+int main(int argc, char *argv[])
+{
+	FILE *in = fopen(argv[1], "r");
+	FILE *out = fopen(argv[2], "w+");
+	char bufferin[64 * 1024];
+	char bufferout[4 * 1024 * 1024];
+	int readed;
+
+	readed = fread(bufferin, 1, sizeof(bufferin), in);
+	unlz4_read(bufferin, readed, NULL, NULL, bufferout, &readed);
+	printf("dec: %d", readed);
+	fwrite(bufferout, 1, readed, out);
+
+	return 0;
+}
