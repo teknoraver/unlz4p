@@ -2,6 +2,7 @@
    LZ4 - Fast LZ compression algorithm
    Copyright (C) 2011, Yann Collet.
    BSD License
+   Matteo Croce <mcroce@redhat.com> - Added standalone support
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -45,8 +46,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <stdint.h>
 #include <string.h>
+#include <errno.h>
 
 //**************************************
 // Performance parameter
@@ -678,9 +681,11 @@ static void hexdump (unsigned char *buf, int len)
 	}
 	printf ("\n");
 }
+#else
+#define hexdump(x, y)
 #endif
 
-int lz4_do_decomp(unsigned char * pDecomp, unsigned char * pComp, unsigned long * pDecompSize)
+static int lz4_do_decomp(unsigned char * pDecomp, unsigned char * pComp, unsigned long * pDecompSize)
 {
 	unsigned char* src = pComp;
 	unsigned char* dst = pDecomp;
@@ -749,33 +754,13 @@ int lz4_do_decomp(unsigned char * pDecomp, unsigned char * pComp, unsigned long 
 	return 0;
 }
 
-unsigned int unlz4_get_decompsize(unsigned char * buf)
+static unsigned int unlz4_get_decompsize(unsigned char * buf)
 {
 	lz4p_header_t * lz4p_header = (lz4p_header_t * )buf ;
 	return (unsigned int)(lz4p_header->osize);
 }
 
-int unlz4_get_hdroffset(unsigned char *input, int in_len)
-{
-#if 1
-	int offset = 0;
-	
-	while (offset < in_len)
-	{
-		if (memcmp(input+offset, LZ4P_MAGIC, sizeof(uint32_t)) == 0) {
-			dprintf("offset = %x\n", offset);
-			return offset;
-		}
-		/* assume lzop hdr is aligned by sizeof(uint32_t) */
-		offset += sizeof(uint32_t);
-	}
-	return -1;
-#else
-	return 0;
-#endif
-}
-
-int unlz4_read(uint8_t *input, int in_len,
+static int unlz4_read(uint8_t *input, int in_len,
 				int (*fill) (void *fill_data),
 				void *fill_data,
 				uint8_t *output, int *posp)
@@ -806,7 +791,7 @@ int unlz4_read(uint8_t *input, int in_len,
 		DISPLAY("Unrecognized header : file cannot be decoded\n");
 		return 6;
 	}
-//	hexdump((uint8_t*)header, sizeof(lz4p_header_t));
+	hexdump((uint8_t*)header, sizeof(lz4p_header_t));
 	in_buf += sizeof(lz4p_header_t);
 	in_len -= sizeof(lz4p_header_t);
 	
@@ -819,7 +804,7 @@ int unlz4_read(uint8_t *input, int in_len,
 
 	unlz4_check_input_size(blocklist_size);
 	memcpy(list_block_size, in_buf, blocklist_size);
-//	hexdump(in_buf, blocklist_size);
+	hexdump(in_buf, blocklist_size);
 	in_buf += blocklist_size;	
 	in_len -= blocklist_size; 
 
@@ -828,7 +813,7 @@ int unlz4_read(uint8_t *input, int in_len,
 		next_size = list_block_size[n];
 		dprintf("[%d] next size = %x\n", n, next_size);
 		unlz4_check_input_size(next_size);
-//		hexdump((uint8_t*)in_buf, 0x20);
+		hexdump((uint8_t*)in_buf, 0x20);
 
 		if(n < (block_count-1))
 		{
@@ -867,15 +852,56 @@ int unlz4_read(uint8_t *input, int in_len,
 
 int main(int argc, char *argv[])
 {
-	FILE *in = fopen(argv[1], "r");
-	FILE *out = fopen(argv[2], "w+");
-	char bufferin[64 * 1024];
-	char bufferout[4 * 1024 * 1024];
+	char *bufferin, *bufferout;
+	struct stat statbuf;
 	int readed;
+	FILE *in, *out;
 
-	readed = fread(bufferin, 1, sizeof(bufferin), in);
-	unlz4_read(bufferin, readed, NULL, NULL, bufferout, &readed);
-	printf("dec: %d", readed);
+	if (argc != 3) {
+		fprintf(stderr, "usage: $0 <infile.lz4p> <outfile.dec>");
+		return 1;
+	}
+
+	in = fopen(argv[1], "r");
+	if (!in) {
+		perror("fopen");
+		return 2;
+	}
+
+	out = fopen(argv[2], "w+");
+	if (!out) {
+		perror("fopen");
+		return 3;
+	}
+
+	if (fstat(fileno(in), &statbuf)) {
+		perror("stat");
+		return 4;
+	}
+
+	bufferin = malloc(statbuf.st_size);
+	if (!bufferin) {
+		perror("malloc");
+		return 5;
+	}
+
+	readed = fread(bufferin, 1, statbuf.st_size, in);
+	if (readed < statbuf.st_size) {
+		perror("fread");
+		return 6;
+	}
+
+	bufferout = malloc(unlz4_get_decompsize(bufferin));
+	if (!bufferout) {
+		perror("malloc");
+		return 7;
+	}
+
+	if (unlz4_read(bufferin, readed, NULL, NULL, bufferout, &readed)) {
+		fputs("unlz4_read: error", stderr);
+		return 8;
+	}
+
 	fwrite(bufferout, 1, readed, out);
 
 	return 0;
