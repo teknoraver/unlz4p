@@ -120,7 +120,7 @@ static int unlz4_read(uint8_t *input, int in_len,
 		if(n < (block_count-1))
 		{
 			// Decode Block
-			sink_int = LZ4_uncompress(in_buf, out_buf, block_size);
+			sink_int = LZ4_decompress_fast(in_buf, out_buf, block_size);
 			if(sink_int < 0 || sink_int != next_size)
 			{
 				printf("Uncompress error. n:%d, res:%d, nextSize:%d\n",
@@ -132,7 +132,7 @@ static int unlz4_read(uint8_t *input, int in_len,
 		else
 		{
 			// Last Block
-			sink_int = LZ4_uncompress_unknownOutputSize(in_buf, out_buf, next_size, block_size);
+			sink_int = LZ4_decompress_safe(in_buf, out_buf, next_size, block_size);
 			if(sink_int < 0) {
 				printf("Uncompress error : res=%d\n", sink_int);
 				return 9;
