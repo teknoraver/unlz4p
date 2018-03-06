@@ -154,7 +154,7 @@ int main(int argc, char *argv[])
 	FILE *in, *out;
 
 	if (argc != 3) {
-		fprintf(stderr, "usage: $0 <infile.lz4p> <outfile.dec>\n");
+		fprintf(stderr, "usage: %s <infile.lz4p> <outfile.dec>\n", *argv);
 		return 1;
 	}
 
