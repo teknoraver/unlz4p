@@ -52,92 +52,86 @@
 		in_len += ret;			\
 	}
 
-typedef struct
-{
-	uint32_t	magic;		// 'L','Z','4','P'
-	uint32_t	osize;		// original size
-	uint32_t	csize;		// compressed size
-	uint32_t	bsize;		// block size
-	uint32_t	nblock;		// block count
-	uint32_t	reserved[3];
-} lz4p_header_t;
+struct lz4p_header {
+	uint32_t magic;		// 'L','Z','4','P'
+	uint32_t osize;		// original size
+	uint32_t csize;		// compressed size
+	uint32_t bsize;		// block size
+	uint32_t nblock;	// block count
+	uint32_t reserved[3];
+};
 
-static unsigned int unlz4_get_decompsize(unsigned char * buf)
+static uint32_t unlz4_get_decompsize(unsigned char *buf)
 {
-	lz4p_header_t * lz4p_header = (lz4p_header_t * )buf ;
-	return (unsigned int)(lz4p_header->osize);
+	struct lz4p_header *lz4p_header = (struct lz4p_header *)buf;
+	return lz4p_header->osize;
 }
 
-static int unlz4_read(uint8_t *input, int in_len,
-				int (*fill) (void *fill_data),
-				void *fill_data,
-				uint8_t *output, int *posp)
+static int unlz4_read(uint8_t * input, int in_len,
+		      int (*fill) (void *fill_data),
+		      void *fill_data, uint8_t * output)
 {
 	uint8_t *in_buf, *out_buf;
 	int sink_int, next_size;
-	int ret = -1;
+	int ret = 0;
 
-	lz4p_header_t *header;
+	struct lz4p_header *header;
 	unsigned int block_size;
 
-	uint32_t	n, block_count, blocklist_size;
-	uint32_t*	list_block_size;
+	uint32_t n, block_count, blocklist_size;
+	uint32_t *list_block_size;
 
 	out_buf = output;
-	in_buf  = input;
-
-	if (*posp)
-		*posp = 0;
+	in_buf = input;
 
 	// check header...
-	unlz4_check_input_size(sizeof(lz4p_header_t));
+	unlz4_check_input_size(sizeof(struct lz4p_header));
 
-	header = (lz4p_header_t*)in_buf;
-	if(memcmp(&header->magic, LZ4P_MAGIC, 4)) {
-		puts("Unrecognized header : file cannot be decoded");
-		return 6;
+	header = (struct lz4p_header *)in_buf;
+	if (memcmp(&header->magic, LZ4P_MAGIC, 4)) {
+		fputs("Unrecognized header : file cannot be decoded", stderr);
+		return -6;
 	}
-	in_buf += sizeof(lz4p_header_t);
-	in_len -= sizeof(lz4p_header_t);
-
+	in_buf += sizeof(struct lz4p_header);
+	in_len -= sizeof(struct lz4p_header);
 
 	block_size = header->bsize;
 	block_count = header->nblock;
 
 	blocklist_size = sizeof(uint32_t) * block_count;
-	list_block_size = (uint32_t*)malloc(blocklist_size);
+	list_block_size = (uint32_t *) malloc(blocklist_size);
 
 	unlz4_check_input_size(blocklist_size);
 	memcpy(list_block_size, in_buf, blocklist_size);
 	in_buf += blocklist_size;
 	in_len -= blocklist_size;
 
-	for(n=0; n<block_count; n++)
-	{
+	for (n = 0; n < block_count; n++) {
 		next_size = list_block_size[n];
 		unlz4_check_input_size(next_size);
 
-		if(n < (block_count-1))
-		{
+		if (n < (block_count - 1)) {
 			// Decode Block
-			sink_int = LZ4_decompress_fast(in_buf, out_buf, block_size);
-			if(sink_int < 0 || sink_int != next_size)
-			{
-				printf("Uncompress error. n:%d, res:%d, nextSize:%d\n",
-						n, sink_int, next_size);
-				return 8;
+			sink_int =
+			    LZ4_decompress_fast(in_buf, out_buf, block_size);
+			if (sink_int < 0 || sink_int != next_size) {
+				fprintf(stderr,
+					"Uncompress error. n:%d, res:%d, nextSize:%d\n",
+					n, sink_int, next_size);
+				return -8;
 			}
-			*posp += block_size;
-		}
-		else
-		{
+			ret += block_size;
+		} else {
 			// Last Block
-			sink_int = LZ4_decompress_safe(in_buf, out_buf, next_size, block_size);
-			if(sink_int < 0) {
-				printf("Uncompress error : res=%d\n", sink_int);
-				return 9;
+			sink_int =
+			    LZ4_decompress_safe(in_buf, out_buf, next_size,
+						block_size);
+			if (sink_int < 0) {
+				fprintf(stderr, "Uncompress error : res=%d\n",
+					sink_int);
+				return -9;
 			}
-			*posp += sink_int;
+			ret += sink_int;
 			break;
 		}
 
@@ -149,7 +143,7 @@ static int unlz4_read(uint8_t *input, int in_len,
 
 	free(list_block_size);
 
-	return 0;
+	return ret;
 }
 
 int main(int argc, char *argv[])
@@ -199,8 +193,9 @@ int main(int argc, char *argv[])
 		return 7;
 	}
 
-	if (unlz4_read(bufferin, readed, NULL, NULL, bufferout, &readed)) {
-		fputs("unlz4_read: error", stderr);
+	readed = unlz4_read(bufferin, readed, NULL, NULL, bufferout);
+	if (readed < 0) {
+		fprintf(stderr, "unlz4_read: error %d\n", readed);
 		return 8;
 	}
 
