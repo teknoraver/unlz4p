@@ -685,6 +685,8 @@ static void hexdump (unsigned char *buf, int len)
 #define hexdump(x, y)
 #endif
 
+/* unused */
+#if 0
 static int lz4_do_decomp(unsigned char * pDecomp, unsigned char * pComp, unsigned long * pDecompSize)
 {
 	unsigned char* src = pComp;
@@ -753,6 +755,7 @@ static int lz4_do_decomp(unsigned char * pDecomp, unsigned char * pComp, unsigne
 	
 	return 0;
 }
+#endif
 
 static unsigned int unlz4_get_decompsize(unsigned char * buf)
 {
